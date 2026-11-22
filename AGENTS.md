@@ -81,7 +81,7 @@ This repository was created to run the **mainline version of Backstage** with th
 - **Plugins** use `createBackendPlugin` from `@backstage/backend-plugin-api`.
 - **Modules** use `createBackendModule` from `@backstage/backend-plugin-api`:
   - `catalogModuleMtaEntityProvider`: Extends `catalogProcessingExtensionPoint` from `@backstage/plugin-catalog-node`.
-  - `scaffolderModuleMtaActions`: Extends `scaffolderActionsExtensionPoint` from `@backstage/plugin-scaffolder-node/alpha`.
+  - `scaffolderModuleMtaActions`: Extends `scaffolderActionsExtensionPoint` from `@backstage/plugin-scaffolder-node`.
 - Routes are mounted at `/api/<pluginId>`:
   - `/api/mta-backend/entity/:name`
   - `/api/mta-mock-hub/*` (`/register`, `/applications`, `/support-contact`, `/entity/:id`)
@@ -89,18 +89,20 @@ This repository was created to run the **mainline version of Backstage** with th
 ### Frontend Architecture: New Frontend System
 
 - **Entry point:** `dev-host/app/src/App.tsx`.
-- Defined using `createApp({ features: [catalogPlugin, mtaPlugin, navModule, homeModule, settingsModule, authDevUsersModule] })`.
+- Defined using `createApp({ features: [catalogPlugin, scaffolderPlugin, mtaPlugin, navModule, homeModule, settingsModule, authDevUsersModule] })`.
 - **`plugins/mta/src/alpha.tsx`** exports the frontend plugin with extensions:
   - `mtaApiExtension`: `ApiBlueprint.make` providing `MtaApiClient` (calls `mta-backend` via `DiscoveryApi`).
   - `mtaEntityContent`: `EntityContentBlueprint.makeWithOverrides` mounting `/migration` on `Component` entities.
   - `mtaHomeWidget`: `HomePageWidgetBlueprint.make` mounting `mta-migration-cards` on the home page.
   - `mtaPage`: `PageBlueprint.make` mounting `/mta`.
+  - `mtaApplicationSourceField`: `FormFieldBlueprint.make` providing the `MtaApplicationSource` scaffolder field (`ui:field: MtaApplicationSource`) and its validator, used by the registration template.
+- `deploymentAssetsApiRef` (exported from `plugins/mta/src/index.ts`) is optional: the plugin ships no implementation, and the deployment asset UI stays hidden unless a host registers one and the persona is an architect.
 
 ### Frontend UI conventions
 
 - Plugin UI uses `@backstage/ui` components and the shared primitives in `plugins/mta/src/components/shared/MtaUi.tsx`.
 - Styling lives in a CSS module next to the component and uses BUI tokens.
-- Material-UI v4 and `@backstage/core-components` remain only in components not yet migrated and are not used for new UI.
+- `plugins/mta` neither imports nor declares Material-UI v4 or `@backstage/core-components`; do not add them back. They remain only in the dev host modules and `plugins/auth-dev-users-frontend`, and are not used for new UI.
 - User-visible copy uses sentence case and the term "Hub".
 
 ---
@@ -153,7 +155,7 @@ Each package's `knip-report.md` is committed. After changing dependencies or exp
    ```
 
 2. **Scaffolder Extension Point Location:**
-   `scaffolderActionsExtensionPoint` is exported from `@backstage/plugin-scaffolder-node/alpha`, NOT from the root `@backstage/plugin-scaffolder-node`. `createTemplateAction` is exported from `@backstage/plugin-scaffolder-node`.
+   `scaffolderActionsExtensionPoint` and `createTemplateAction` are both imported from the root `@backstage/plugin-scaffolder-node`. At the RHDH 2.1 version (0.13.6), `/alpha` no longer exports the extension point.
 
 3. **Catalog Entity Provider Mutations:**
    `MtaEntityProvider` uses `{ type: 'full', entities }` mutations. This ensures existing catalog entities receive status updates when applications transition from `registering` to `discovered` or `failed`.

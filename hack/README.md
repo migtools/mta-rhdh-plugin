@@ -15,7 +15,7 @@ will push when the worktree is created.
 hack/pr-worktree.sh checkout pr30
 
 # Select a specific repository directly by URL
-hack/pr-worktree.sh checkout https://github.com/sjd78/mta-rhdh-plugin/pull/30
+hack/pr-worktree.sh checkout https://github.com/migtools/mta-rhdh-plugin/pull/30
 
 # List active PR worktrees
 hack/pr-worktree.sh list

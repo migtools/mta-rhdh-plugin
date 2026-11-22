@@ -36,13 +36,13 @@ See [`dev-host/README.md`](dev-host/README.md) for host details, scenarios, and 
 
 ## Plugin Details
 
-| Plugin / module                | Role                                            | Interfaces                                                                                                                                                  |
-| ------------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plugins/mta`                  | Live migration tab, home cards, and `/mta` page | `EntityContentBlueprint`, `HomePageWidgetBlueprint`, `PageBlueprint`, `MtaApiClient`                                                                        |
-| `plugins/mta-backend`          | Hub REST client/proxy                           | `/api/mta-backend/applications`, per-application tasks/analysis/profiles/discovery/analyze, tasks, incidents, targets, archetypes; `/entity/:name` retained |
-| `plugins/mta-mock-hub-backend` | Legacy demo only                                | Simulated registration/discovery; not the live Hub                                                                                                          |
-| Catalog entity-provider module | Legacy mock ingestion                           | Scheduled mock-Hub reads, not the development startup snapshot                                                                                              |
-| Scaffolder actions module      | Legacy mock registration                        | `mta:register-application`; not live production registration yet                                                                                            |
+| Plugin / module                | Role                                            | Interfaces                                                                                                                                                                              |
+| ------------------------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugins/mta`                  | Live migration tab, home cards, and `/mta` page | `EntityContentBlueprint`, `HomePageWidgetBlueprint`, `PageBlueprint`, `FormFieldBlueprint` (`MtaApplicationSource` scaffolder field), `MtaApiClient`, optional `deploymentAssetsApiRef` |
+| `plugins/mta-backend`          | Hub REST client/proxy                           | `/api/mta-backend/applications`, per-application tasks/analysis/profiles/discovery/analyze, tasks, incidents, targets, archetypes; `/entity/:name` retained                             |
+| `plugins/mta-mock-hub-backend` | Legacy demo only                                | Simulated registration/discovery; not the live Hub                                                                                                                                      |
+| Catalog entity-provider module | Legacy mock ingestion                           | Scheduled mock-Hub reads, not the development startup snapshot                                                                                                                          |
+| Scaffolder actions module      | Legacy mock registration                        | `mta:register-application`; not live production registration yet                                                                                                                        |
 
 ### Catalog connections
 
@@ -117,11 +117,9 @@ For the original prototype requirements, parity gaps, and six recorded walkthrou
 
 ## UI Design System
 
-- [Designing for Backstage](https://backstage.io/docs/dls/design)
-- [Backstage components storybook](https://backstage.io/storybook) - `@backstage/core-components`
-- Backstage v1.10 design system builds on top of [Material UI](https://material-ui.com/)
+- [Backstage UI](https://ui.backstage.io) - `@backstage/ui`, the components and tokens the plugin UI uses
 
 ## References
 
-- [RHDH v1.10 docs](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10)
+- [RHDH 2.1 docs](https://docs.redhat.com/en/documentation/red_hat_developer_hub/2.1)
 - [Backstage](https://backstage.io)

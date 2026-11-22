@@ -165,7 +165,7 @@ Environment:
 
 Examples:
   $(basename "$0") checkout 6
-  $(basename "$0") checkout https://github.com/sjd78/mta-rhdh-plugin/pull/6
+  $(basename "$0") checkout https://github.com/migtools/mta-rhdh-plugin/pull/6
   $(basename "$0") list
   $(basename "$0") teardown 6
   $(basename "$0") teardown --force
