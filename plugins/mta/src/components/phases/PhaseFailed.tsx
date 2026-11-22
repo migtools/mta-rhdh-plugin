@@ -62,27 +62,39 @@ export function PhaseFailed({
       />
       <Section title="Task details">
         <DetailList>
-          <DetailRow label="Task ID">{task?.id ?? 'Unavailable'}</DetailRow>
-          <DetailRow label="Addon">{task?.addon ?? 'Unavailable'}</DetailRow>
-          <DetailRow label="Status">{task?.state ?? 'Unavailable'}</DetailRow>
+          <DetailRow label="Task ID">
+            <Text as="span">{task?.id ?? 'Unavailable'}</Text>
+          </DetailRow>
+          <DetailRow label="Addon">
+            <Text as="span">{task?.addon ?? 'Unavailable'}</Text>
+          </DetailRow>
+          <DetailRow label="Status">
+            <Text as="span">{task?.state ?? 'Unavailable'}</Text>
+          </DetailRow>
         </DetailList>
       </Section>
-      <Flex align="center" gap="3" className={styles.actions}>
-        {canRetry && (
-          <Button variant="primary" isDisabled={isExecuting} onPress={onRetry}>
-            Retry task
-          </Button>
-        )}
-        {onSelectProfile && (
-          <Button
-            variant="tertiary"
-            isDisabled={isExecuting}
-            onPress={onSelectProfile}
-          >
-            Select analysis profile
-          </Button>
-        )}
-      </Flex>
+      {(canRetry || onSelectProfile) && (
+        <Flex align="center" gap="3" className={styles.actions}>
+          {canRetry && (
+            <Button
+              variant="primary"
+              isDisabled={isExecuting}
+              onPress={onRetry}
+            >
+              Retry task
+            </Button>
+          )}
+          {onSelectProfile && (
+            <Button
+              variant="tertiary"
+              isDisabled={isExecuting}
+              onPress={onSelectProfile}
+            >
+              Select analysis profile
+            </Button>
+          )}
+        </Flex>
+      )}
       <SupportContact name={config.supportName} email={config.supportEmail} />
     </Flex>
   );

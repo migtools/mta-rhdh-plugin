@@ -1,6 +1,7 @@
 /*
- * Styles for the failed task screen. Every value comes from a BUI semantic
- * token; app-level theme mapping owns the color values.
+ * Layout for the failed task screen. BUI components own the colors; this
+ * module resets the failure message margin, keeps the message on its own
+ * lines and lets the actions wrap.
  */
 .message {
   margin: 0;
