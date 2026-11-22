@@ -160,6 +160,33 @@ describe('AssetFileBrowser', () => {
     ).toBeInTheDocument();
   });
 
+  it('does not report a copy of the previous file on the next one', async () => {
+    const user = userEvent.setup();
+    let finishCopy!: () => void;
+    const writeText = jest.fn(
+      () =>
+        new Promise<void>(resolve => {
+          finishCopy = resolve;
+        }),
+    );
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<Harness />);
+
+    await user.click(
+      screen.getByRole('button', { name: 'Copy file contents' }),
+    );
+    await user.click(file('k8s/base/deployment.yaml'));
+    await act(async () => finishCopy());
+
+    expect(viewer('k8s/base/deployment.yaml')).toBeInTheDocument();
+    expect(
+      screen.queryByText('File contents copied to clipboard'),
+    ).not.toBeInTheDocument();
+  });
+
   it('discloses a clipped directory on focus and hover, and never for a short path', async () => {
     const user = userEvent.setup();
     const [long, short] = LONG_PATH_ASSETS;

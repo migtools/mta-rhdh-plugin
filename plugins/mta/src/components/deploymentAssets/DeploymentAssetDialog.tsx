@@ -65,14 +65,6 @@ interface DeploymentAssetDialogProps {
   application: DeploymentAssetApplication;
 }
 
-function isAbortError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { name?: string }).name === 'AbortError'
-  );
-}
-
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -168,11 +160,15 @@ export function DeploymentAssetDialog({
     api
       .renderDeploymentAssets({ application, signal: controller.signal })
       .then(result => {
+        // A host need not reject when the signal aborts, so a render the
+        // dialog closed or replaced can still settle. Only the current one
+        // updates the dialog.
+        if (controller.signal.aborted) return;
         setSelectedPath(result.assets[0]?.path ?? '');
         setRender({ status: 'ready', result });
       })
       .catch(error => {
-        if (isAbortError(error)) return;
+        if (controller.signal.aborted) return;
         setRender({ status: 'failed', message: messageOf(error) });
       });
   }, [api, application]);
@@ -230,10 +226,11 @@ export function DeploymentAssetDialog({
         signal: controller.signal,
       })
       .then(result => {
+        if (controller.signal.aborted) return;
         setDelivery({ status: 'committed', result });
       })
       .catch(error => {
-        if (isAbortError(error)) return;
+        if (controller.signal.aborted) return;
         setDelivery({ status: 'failed', message: messageOf(error) });
       });
   };

@@ -87,6 +87,11 @@ export type DeploymentAssetRepository = 'source' | 'config';
  */
 export interface RenderDeploymentAssetsRequest {
   application: DeploymentAssetApplication;
+  /**
+   * Aborted when the dialog closes or a newer render replaces this one. An
+   * implementation should stop the work and reject with an `AbortError`; the
+   * UI ignores whatever an aborted request settles with either way.
+   */
   signal?: AbortSignal;
 }
 
@@ -104,6 +109,14 @@ export interface CommitDeploymentAssetsRequest {
    * `config`, the application source repository for `source`.
    */
   repositoryUrl: string;
+  /**
+   * The member cannot close the dialog while a commit runs, so this aborts
+   * only when the host sets `open` to false or unmounts the dialog. An
+   * implementation should stop the work and reject with an `AbortError`; the
+   * UI ignores whatever an aborted request settles with either way. The commit
+   * may already have landed when the signal aborts, and the UI does not report
+   * it.
+   */
   signal?: AbortSignal;
 }
 

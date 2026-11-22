@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { TestApiProvider } from '@backstage/frontend-test-utils';
@@ -46,21 +52,47 @@ function renderDialog({
   api: MockApi;
   onClose?: () => void;
 }) {
-  render(
+  const dialog = (open: boolean) => (
     <MemoryRouter>
       <TestApiProvider
         apis={[[deploymentAssetsApiRef, api as unknown as DeploymentAssetsApi]]}
       >
         <DeploymentAssetDialog
-          open
+          open={open}
           onClose={onClose}
           application={APPLICATION}
         />
       </TestApiProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { onClose };
+  const { rerender } = render(dialog(true));
+  // The findings screen keeps the dialog mounted and toggles `open`, so a
+  // reopened dialog is the same component instance as the closed one.
+  return { onClose, setOpen: (open: boolean) => rerender(dialog(open)) };
 }
+
+/** A response the test settles by hand, after the request it answers. */
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+// Older files a cancelled render returns after the newer one settled.
+const staleFiles: AssetRenderResult = {
+  generators: ASSET_FIXTURE_GENERATORS,
+  assets: [{ path: 'stale.yaml', generatorId: 'container', content: 'old' }],
+};
 
 const previewReady = () =>
   screen.findByRole('heading', {
@@ -351,5 +383,164 @@ describe('DeploymentAssetDialog', () => {
     );
     const result = await screen.findByText('acme/deploy-config');
     expect(result).toBeInTheDocument();
+  });
+
+  // A host may ignore the abort signal, so a cancelled request can still
+  // settle. Each case closes the dialog during render A, reopens it, lets the
+  // newer render B finish first, and only then settles A.
+  it.each([
+    [
+      'resolves with older files',
+      (a: Deferred<AssetRenderResult>) => a.resolve(staleFiles),
+    ],
+    [
+      'rejects with an ordinary error',
+      (a: Deferred<AssetRenderResult>) =>
+        a.reject(new Error('The Hub timed out.')),
+    ],
+  ])(
+    'ignores a cancelled render that %s after the dialog reopens',
+    async (_, settleStale) => {
+      const user = userEvent.setup();
+      const stale = deferred<AssetRenderResult>();
+      const current = deferred<AssetRenderResult>();
+      api.renderDeploymentAssets
+        .mockReturnValueOnce(stale.promise)
+        .mockReturnValueOnce(current.promise);
+      const { setOpen } = renderDialog({ api });
+
+      setOpen(false);
+      expect(api.renderDeploymentAssets.mock.calls[0][0].signal.aborted).toBe(
+        true,
+      );
+      setOpen(true);
+      expect(api.renderDeploymentAssets).toHaveBeenCalledTimes(2);
+      expect(api.renderDeploymentAssets.mock.calls[1][0].signal.aborted).toBe(
+        false,
+      );
+
+      await act(async () => current.resolve(sourceFiles));
+      await previewReady();
+      await user.click(file('k8s/base/deployment.yaml'));
+
+      await act(async () => settleStale(stale));
+      expect(await previewReady()).toBeInTheDocument();
+      expect(viewer('k8s/base/deployment.yaml')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'stale.yaml' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not prepare deployment assets'),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it('ignores a cancelled render that settles while the reopened render is loading', async () => {
+    const stale = deferred<AssetRenderResult>();
+    const current = deferred<AssetRenderResult>();
+    api.renderDeploymentAssets
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise);
+    const { setOpen } = renderDialog({ api });
+    setOpen(false);
+    setOpen(true);
+
+    await act(async () => stale.reject(new Error('The Hub timed out.')));
+    expect(screen.getByText('Preparing files.')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not prepare deployment assets'),
+    ).not.toBeInTheDocument();
+
+    await act(async () => current.resolve(sourceFiles));
+    await previewReady();
+    expect(viewer('Containerfile')).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'resolves',
+      (c: Deferred<AssetCommitResult>) =>
+        c.resolve({
+          repositoryUrl: APPLICATION.repository!.url,
+          branch: ASSET_BRANCH_NAME,
+        }),
+    ],
+    [
+      'rejects',
+      (c: Deferred<AssetCommitResult>) =>
+        c.reject(new Error('The repository is read only.')),
+    ],
+  ])(
+    'ignores a cancelled commit that %s after the dialog reopens',
+    async (_, settleStale) => {
+      const user = userEvent.setup();
+      const commit = deferred<AssetCommitResult>();
+      api.commitDeploymentAssets.mockReturnValueOnce(commit.promise);
+      const { setOpen } = renderDialog({ api });
+      await previewReady();
+      await user.click(screen.getByRole('button', { name: 'Commit files' }));
+
+      // The dialog blocks its own close while committing, but a host that sets
+      // `open` to false still cancels the commit.
+      setOpen(false);
+      expect(api.commitDeploymentAssets.mock.calls[0][0].signal.aborted).toBe(
+        true,
+      );
+      setOpen(true);
+      await previewReady();
+
+      await act(async () => settleStale(commit));
+      expect(await previewReady()).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: /files committed/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not commit files'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Commit files' }),
+      ).toBeEnabled();
+    },
+  );
+
+  // An AbortError the dialog did not cause is an ordinary failure: ignoring it
+  // would leave the dialog waiting for a result that never comes.
+  const hostAbort = (message: string) =>
+    Object.assign(new Error(message), { name: 'AbortError' });
+
+  it('reports a render the host aborted on its own and offers Retry', async () => {
+    api.renderDeploymentAssets.mockRejectedValueOnce(
+      hostAbort('The Hub cancelled the render.'),
+    );
+    renderDialog({ api });
+
+    expect(
+      await screen.findByText('Could not prepare deployment assets'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The Hub cancelled the render. Your selections are kept when you retry.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
+
+  it('reports a commit the host aborted on its own and lets the member leave', async () => {
+    const user = userEvent.setup();
+    api.commitDeploymentAssets.mockRejectedValueOnce(
+      hostAbort('The Hub cancelled the commit.'),
+    );
+    const { onClose } = renderDialog({ api });
+    await previewReady();
+
+    await user.click(screen.getByRole('button', { name: 'Commit files' }));
+    expect(
+      await screen.findByText('Could not commit files'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Commit files' })).toBeEnabled();
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel).toBeEnabled();
+    await user.click(cancel);
+    expect(onClose).toHaveBeenCalled();
   });
 });

@@ -95,10 +95,9 @@ function useClippedTooltip(
 }
 
 /** Copies one rendered file and reports the result without shifting the layout. */
-function CopyFileButton({ path, content }: { path: string; content: string }) {
+function CopyFileButton({ content }: { content: string }) {
   const [result, setResult] = useState<'idle' | 'copied' | 'failed'>('idle');
   const label = 'Copy file contents';
-  useEffect(() => setResult('idle'), [path]);
   let status = '';
   if (result === 'copied') status = 'File contents copied to clipboard';
   else if (result === 'failed') status = 'Could not copy file contents';
@@ -393,7 +392,11 @@ export function AssetFileBrowser({
               {provenanceLine}
             </Text>
           </div>
-          <CopyFileButton path={selected.path} content={selected.content} />
+          {/*
+           * Keyed by file, so selecting another file starts a fresh result and
+           * a copy that settles afterwards cannot report on the new file.
+           */}
+          <CopyFileButton key={selected.path} content={selected.content} />
         </div>
         <pre
           className={styles.code}
