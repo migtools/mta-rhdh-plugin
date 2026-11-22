@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Entity } from '@backstage/catalog-model';
 import {
@@ -110,12 +110,64 @@ describe('application source picker', () => {
         initialValues={{ entityRef: '', repoUrl: 'not a url', rootPath: '' }}
       />,
     );
-    expect(
-      screen.getByRole('textbox', { name: 'Repository URL' }),
-    ).toHaveAttribute('aria-invalid', 'true');
+    const url = screen.getByRole('textbox', { name: 'Repository URL' });
+    expect(url).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Enter a repository URL.',
     );
+    expect(url).toHaveAccessibleDescription(
+      'HTTPS and SSH repository URLs are supported. Enter a repository URL.',
+    );
+  });
+
+  it('describes the root path with its error after a touch', () => {
+    render(
+      <Picker
+        showErrors
+        errors={{ root: 'Enter a folder inside the repository.' }}
+        initialValues={{
+          entityRef: '',
+          repoUrl: 'https://github.com/acme/app',
+          rootPath: '../outside',
+        }}
+      />,
+    );
+    const root = screen.getByRole('textbox', {
+      name: 'Application root path',
+    });
+    expect(root).toHaveAttribute('aria-invalid', 'true');
+    expect(root).toHaveAccessibleDescription(
+      /Enter a folder inside the repository\.$/,
+    );
+    expect(
+      screen.getByRole('textbox', { name: 'Repository URL' }),
+    ).toHaveAccessibleDescription(
+      'HTTPS and SSH repository URLs are supported.',
+    );
+  });
+
+  it('ties each instance to its own error when the field renders twice', () => {
+    render(
+      <>
+        <Picker
+          showErrors
+          errors={{ repo: 'First error.' }}
+          initialValues={{ entityRef: '', repoUrl: 'one', rootPath: '' }}
+        />
+        <Picker
+          showErrors
+          errors={{ repo: 'Second error.' }}
+          initialValues={{ entityRef: '', repoUrl: 'two', rootPath: '' }}
+        />
+      </>,
+    );
+    const [first, second] = screen.getAllByRole('textbox', {
+      name: 'Repository URL',
+    });
+    expect(first).toHaveAccessibleDescription(/First error\.$/);
+    expect(second).toHaveAccessibleDescription(/Second error\.$/);
+    const ids = Array.from(document.querySelectorAll('[id]'), node => node.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('shows the selection summary and returns focus to the source choice', async () => {
@@ -265,15 +317,43 @@ describe('application source picker', () => {
     ).toBeVisible();
   });
 
-  it('reports no matches without a dead end', () => {
-    render(<Picker search={{ term: 'nothing', results: [] }} />);
+  /** A search box whose term really changes as the member types. */
+  function SearchingPicker() {
+    const [term, setTerm] = useState('');
+    return <Picker search={{ term, onTermChange: setTerm, results: [] }} />;
+  }
+
+  it('reports no matches once, without a dead end', async () => {
+    render(<SearchingPicker />);
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Application' }),
+      'nothing',
+    );
+    // The search box owns the empty state: one message in its result list.
     expect(
-      screen.getByText(
-        'No applications match "nothing". Try another search, or enter a repository URL below.',
-      ),
+      within(screen.getByRole('listbox')).getByText('No results found.'),
     ).toBeVisible();
+    expect(screen.getAllByText('No results found.')).toHaveLength(1);
     expect(
-      screen.getByRole('textbox', { name: 'Repository URL' }),
+      screen.getByText('Try another search, or enter a repository URL below.'),
     ).toBeVisible();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('keeps the no match guidance after focus moves to the repository URL', async () => {
+    render(<SearchingPicker />);
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Application' }),
+      'nothing',
+    );
+    const url = screen.getByRole('textbox', { name: 'Repository URL' });
+    await userEvent.click(url);
+    expect(url).toHaveFocus();
+    // The result list, and its own empty state, closed with the focus move.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Try another search, or enter a repository URL below.'),
+    ).toBeVisible();
+    expect(screen.queryAllByText('No results found.')).toHaveLength(0);
   });
 });

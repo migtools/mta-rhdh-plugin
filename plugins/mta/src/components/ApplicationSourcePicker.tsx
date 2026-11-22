@@ -88,7 +88,18 @@ export function ApplicationSourcePicker({
   errors: SourceErrors;
   rootRef?: Ref<HTMLDivElement>;
 }) {
-  const labelId = useId();
+  // The gallery and a template can render this field more than once on a page,
+  // so every id that ties an input to its text is unique per instance.
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
+  const searchId = `${fieldId}-search`;
+  const repoUrlId = `${fieldId}-repository-url`;
+  const repoUrlErrorId = `${repoUrlId}-error`;
+  const rootPathId = `${fieldId}-root-path`;
+  const rootPathErrorId = `${rootPathId}-error`;
+  const selectionErrorId = `${fieldId}-selection-error`;
+  const showRepoError = showErrors && !!errors.repo;
+  const showRootError = showErrors && !!errors.root;
   const summaryRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const previousRef = useRef(values.entityRef);
@@ -272,7 +283,7 @@ export function ApplicationSourcePicker({
     if (disabled) {
       return (
         <TextField
-          id="mta-application-search"
+          id={searchId}
           label="Application"
           size="medium"
           value={search.term}
@@ -332,15 +343,16 @@ export function ApplicationSourcePicker({
             </Button>
           </div>
         )}
+        {/* The search box shows and announces "No results found." only while
+            its list is open. This plain hint stays once focus moves on, and is
+            not a live region, so the empty result is announced once. */}
         {!search.loading &&
           !search.error &&
           !!term &&
           search.results.length === 0 && (
-            <div role="status">
-              <Text variant="body-small">
-                {`No applications match "${term}". Try another search, or enter a repository URL below.`}
-              </Text>
-            </div>
+            <Text variant="body-small" color="secondary">
+              Try another search, or enter a repository URL below.
+            </Text>
           )}
         {!search.loading &&
           !search.error &&
@@ -364,9 +376,7 @@ export function ApplicationSourcePicker({
         className={styles.root}
         aria-label="Application selection"
         aria-describedby={
-          showErrors && errors.selection
-            ? 'mta-application-selection-error'
-            : undefined
+          showErrors && errors.selection ? selectionErrorId : undefined
         }
         tabIndex={-1}
       >
@@ -379,7 +389,7 @@ export function ApplicationSourcePicker({
                 or
               </div>
               <TextField
-                id="mta-repository-url"
+                id={repoUrlId}
                 label="Repository URL"
                 size="medium"
                 value={values.repoUrl}
@@ -392,16 +402,17 @@ export function ApplicationSourcePicker({
                   })
                 }
                 onBlur={onTouch}
-                isInvalid={showErrors && !!errors.repo}
+                isInvalid={showRepoError}
+                aria-describedby={showRepoError ? repoUrlErrorId : undefined}
                 description="HTTPS and SSH repository URLs are supported."
                 placeholder="https://github.com/org/repository"
               />
-              {showErrors && errors.repo && (
+              {showRepoError && (
                 <Text
                   as="p"
                   variant="body-x-small"
                   color="danger"
-                  id="mta-repository-url-error"
+                  id={repoUrlErrorId}
                   role="alert"
                 >
                   {errors.repo}
@@ -410,7 +421,7 @@ export function ApplicationSourcePicker({
               {hasUrl && (
                 <>
                   <TextField
-                    id="mta-application-root-path"
+                    id={rootPathId}
                     label="Application root path"
                     size="medium"
                     value={values.rootPath}
@@ -423,16 +434,19 @@ export function ApplicationSourcePicker({
                       })
                     }
                     onBlur={onTouch}
-                    isInvalid={showErrors && !!errors.root}
+                    isInvalid={showRootError}
+                    aria-describedby={
+                      showRootError ? rootPathErrorId : undefined
+                    }
                     description="Optional. Enter a folder for a monorepo, or leave blank to use the repository root."
                     placeholder="services/payments"
                   />
-                  {showErrors && errors.root && (
+                  {showRootError && (
                     <Text
                       as="p"
                       variant="body-x-small"
                       color="danger"
-                      id="mta-application-root-path-error"
+                      id={rootPathErrorId}
                       role="alert"
                     >
                       {errors.root}
@@ -448,7 +462,7 @@ export function ApplicationSourcePicker({
               as="p"
               variant="body-x-small"
               color="danger"
-              id="mta-application-selection-error"
+              id={selectionErrorId}
               role="alert"
             >
               {errors.selection}
