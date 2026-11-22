@@ -264,6 +264,280 @@ describe('finding links', () => {
     ).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('locates the finding again after the link names an unknown one', () => {
+    render(
+      <MemoryRouter initialEntries={['/migration?issue=issue-15']}>
+        <FindingsTable issues={issues(25)} />
+        <IssueLink id="does-not-exist" />
+        <IssueLink id="issue-15" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Finding 11')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Previous table page' }),
+    );
+    expect(screen.getByText('Finding 1')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Link to does-not-exist' }),
+    );
+    expect(screen.getByText('Finding 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Link to issue-15' }));
+    expect(screen.getByText('Finding 11')).toBeInTheDocument();
+    expect(screen.queryByText('Finding 1')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Hide details for Finding 15,/ }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByText('No additional details were reported by Hub.'),
+    ).toBeInTheDocument();
+  });
+
+  it('locates the finding again when Back leaves an unknown one', () => {
+    render(
+      <MemoryRouter initialEntries={['/migration?issue=issue-15']}>
+        <FindingsTable issues={issues(25)} />
+        <IssueLink id="does-not-exist" />
+        <BackLink />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Previous table page' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Link to does-not-exist' }),
+    );
+    expect(screen.getByText('Finding 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/migration?issue=issue-15|POP',
+    );
+    expect(screen.getByText('Finding 11')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Hide details for Finding 15,/ }),
+    ).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('locates the finding again after it was closed and the page changed', () => {
+    render(
+      <MemoryRouter initialEntries={['/migration?issue=issue-15']}>
+        <FindingsTable issues={issues(25)} />
+        <IssueLink id="issue-15" />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Hide details for Finding 15,/ }),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/migration|REPLACE',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Previous table page' }),
+    );
+    expect(screen.getByText('Finding 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Link to issue-15' }));
+    expect(screen.getByText('Finding 11')).toBeInTheDocument();
+    expect(screen.queryByText('Finding 1')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Hide details for Finding 15,/ }),
+    ).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  describe('when clearing a search that hid the linked finding', () => {
+    // Every finding but the linked one matches "minor", so search hides it.
+    const findings = issues(25).map(finding =>
+      finding.id === 'issue-15'
+        ? { ...finding, severity: 'critical' as const }
+        : finding,
+    );
+    const scrollIntoView = jest.fn();
+
+    beforeEach(() => {
+      scrollIntoView.mockClear();
+      (Element.prototype as { scrollIntoView?: () => void }).scrollIntoView =
+        scrollIntoView;
+    });
+
+    afterEach(() => {
+      delete (Element.prototype as { scrollIntoView?: () => void })
+        .scrollIntoView;
+    });
+
+    function search(value: string) {
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Filter' }), {
+        target: { value },
+      });
+    }
+
+    function expectLinkedFindingOnItsPage() {
+      expect(screen.getByText('Finding 11')).toBeInTheDocument();
+      expect(screen.queryByText('Finding 1')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /^Hide details for Finding 15,/ }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      expect(
+        screen.getByText('No additional details were reported by Hub.'),
+      ).toBeInTheDocument();
+    }
+
+    function expectLinkedFindingInView() {
+      expectLinkedFindingOnItsPage();
+      expect(scrollIntoView).toHaveBeenCalled();
+    }
+
+    it('shows the finding again on its page', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      search('minor');
+      expect(
+        screen.queryByText('No additional details were reported by Hub.'),
+      ).not.toBeInTheDocument();
+      scrollIntoView.mockClear();
+      search('');
+      expectLinkedFindingInView();
+    });
+
+    it('shows the finding again after paging the search results', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      search('minor');
+      fireEvent.click(screen.getByRole('button', { name: 'Next table page' }));
+      expect(screen.getByText('Finding 12')).toBeInTheDocument();
+      scrollIntoView.mockClear();
+      search('');
+      expectLinkedFindingInView();
+    });
+
+    it('shows the finding again after another search showed it', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      search('minor');
+      // Only the linked finding is critical, so this search shows it again.
+      search('critical');
+      expect(screen.getByText('Finding 15')).toBeInTheDocument();
+      search('');
+      // Its details stayed open from the search, so they do not scroll again.
+      expectLinkedFindingOnItsPage();
+    });
+
+    it('keeps the page when the finding is closed before clearing a search that showed it', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      search('minor');
+      search('critical');
+      fireEvent.click(
+        screen.getByRole('button', { name: /^Hide details for Finding 15,/ }),
+      );
+      search('');
+      expect(screen.getByText('Finding 11')).toBeInTheDocument();
+      expect(screen.queryByText('Finding 1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/migration|REPLACE',
+      );
+    });
+
+    it('shows the finding again after paging a search that kept it', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      // Every finding matches, so this search keeps the linked one.
+      search('finding');
+      fireEvent.click(screen.getByRole('button', { name: 'Next table page' }));
+      search('minor');
+      scrollIntoView.mockClear();
+      search('');
+      expectLinkedFindingInView();
+    });
+
+    it('shows the finding again after a search of spaces alone', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      search('minor');
+      // Spaces alone match every finding but still form a search.
+      search(' ');
+      search('');
+      expectLinkedFindingOnItsPage();
+    });
+
+    it('keeps the page the user chose before the search', () => {
+      renderTable(findings, ['/migration?issue=issue-15']);
+      fireEvent.click(screen.getByRole('button', { name: 'Next table page' }));
+      search('minor');
+      search('');
+      // Page three, as when the search keeps the linked finding.
+      expect(screen.getByText('Finding 21')).toBeInTheDocument();
+      expect(screen.queryByText('Finding 11')).not.toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/migration?issue=issue-15|POP',
+      );
+    });
+  });
+
+  describe('when search results keep their own page', () => {
+    // Every finding but issue-15 matches "minor".
+    const findings = issues(25).map(finding =>
+      finding.id === 'issue-15'
+        ? { ...finding, severity: 'critical' as const }
+        : finding,
+    );
+
+    function search(value: string) {
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Filter' }), {
+        target: { value },
+      });
+    }
+
+    function nextPage() {
+      fireEvent.click(screen.getByRole('button', { name: 'Next table page' }));
+    }
+
+    it('shows a finding opened in search results on its page after clearing', () => {
+      renderTable(findings, ['/migration']);
+      search('minor');
+      nextPage();
+      nextPage();
+      fireEvent.click(expander('Finding 25'));
+      search('');
+      expect(screen.getByText('Finding 21')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /^Hide details for Finding 25,/ }),
+      ).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('starts a later search on its first page', () => {
+      renderTable(findings, ['/migration']);
+      search('minor');
+      nextPage();
+      search('');
+      nextPage();
+      search('minor');
+      expect(screen.getByText('Finding 1')).toBeInTheDocument();
+      expect(screen.queryByText('Finding 12')).not.toBeInTheDocument();
+    });
+
+    it('shows the first page after the page size changed in a search', () => {
+      renderTable(issues(35), ['/migration']);
+      nextPage();
+      search('Finding');
+      fireEvent.click(screen.getByRole('button', { name: /Show 10 results/ }));
+      fireEvent.click(screen.getByRole('option', { name: 'Show 20 results' }));
+      search('');
+      expect(screen.getByText('1 - 20 of 35')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the chosen page while the linked finding stays in the results', () => {
+    renderTable(issues(35), ['/migration?issue=issue-15']);
+    fireEvent.click(screen.getByRole('button', { name: 'Next table page' }));
+    // Every finding matches, so the linked one never leaves the results.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter' }), {
+      target: { value: 'dependency' },
+    });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter' }), {
+      target: { value: '' },
+    });
+    // Page three, which the user chose, not page two, which holds the link.
+    expect(screen.getByText('Finding 21')).toBeInTheDocument();
+    expect(screen.queryByText('Finding 11')).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/migration?issue=issue-15|POP',
+    );
+  });
+
   it('writes and clears the finding without adding history entries', () => {
     renderTable(issues(3), ['/home', '/migration?view=all'], 1);
     fireEvent.click(expander('Finding 2'));

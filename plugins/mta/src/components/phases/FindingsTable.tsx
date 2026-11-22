@@ -38,6 +38,8 @@ const SEVERITIES: IssueSeverity[] = ['critical', 'major', 'minor', 'info'];
 /** A page holds at most ten findings, as the Hub table always has. */
 const PAGE_SIZE = 10;
 
+type PageState = { offset: number; queryKey: string };
+
 /** Stable id of the inline detail a row toggle controls. */
 const detailId = (issueId: string) => `issue-details-${issueId}`;
 
@@ -152,10 +154,36 @@ export function FindingsTable({ issues }: { issues: MigrationIssue[] }) {
    */
   const paginated = issues.length > PAGE_SIZE;
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const [page, setPage] = useState(() => ({
-    offset: issuePageOffset(orderedIds, issueId, pageSize) ?? 0,
-    queryKey,
+  /*
+   * Search results keep their own page, so paging or moving to the linked
+   * finding inside a search never replaces the page of the unfiltered findings
+   * that clearing the search returns to. Any search value counts, even spaces
+   * alone, because it has its own query key.
+   */
+  const searching = search !== '';
+  const [pages, setPages] = useState(() => ({
+    unfiltered: {
+      offset: issuePageOffset(orderedIds, issueId, pageSize) ?? 0,
+      queryKey,
+    },
+    searched: { offset: 0, queryKey: '' },
   }));
+  const page = searching ? pages.searched : pages.unfiltered;
+  const setPage = useCallback(
+    (inSearch: boolean, update: (current: PageState) => PageState) =>
+      setPages(previous => {
+        const slot = inSearch ? 'searched' : 'unfiltered';
+        const next = update(previous[slot]);
+        if (next === previous[slot]) {
+          return previous;
+        }
+        // A later search starts on its first page, as with a single page.
+        return inSearch
+          ? { ...previous, searched: next }
+          : { unfiltered: next, searched: { offset: 0, queryKey: '' } };
+      }),
+    [],
+  );
   const offset = paginated
     ? clampPageOffset(
         page.queryKey === queryKey ? page.offset : 0,
@@ -168,31 +196,45 @@ export function FindingsTable({ issues }: { issues: MigrationIssue[] }) {
     : ordered;
 
   /*
-   * A link opens the page that holds its finding. Only a change of the
-   * parameter moves the page, so paging and searching are not undone, and an
-   * id that search or sort hides leaves the link as it is without expanding
-   * anything.
+   * A link opens the page that holds its finding. The page moves only when
+   * the parameter changes or its finding comes back into the results, so
+   * paging and searching are not undone while the finding stays in them, and
+   * an id that search hides leaves the link as it is without expanding
+   * anything. A move made inside search results is made again on the
+   * unfiltered findings when the search is cleared. Once the user pages the
+   * unfiltered findings away from the link, their page wins until the link
+   * changes.
    */
-  const appliedIssue = useRef<string | null>(null);
+  const appliedIssue = useRef<{ id: string; searching: boolean } | null>(null);
+  const pagedAwayFrom = useRef<string | null>(null);
   useEffect(() => {
-    if (!issueId) {
-      appliedIssue.current = null;
-      return;
-    }
-    if (appliedIssue.current === issueId) {
-      return;
-    }
     const targetOffset = issuePageOffset(orderedIds, issueId, pageSize);
-    if (targetOffset === undefined) {
+    if (!issueId || targetOffset === undefined) {
+      if (!issueId || pagedAwayFrom.current !== issueId) {
+        appliedIssue.current = null;
+      }
       return;
     }
-    appliedIssue.current = issueId;
-    setPage(current =>
+    const applied = appliedIssue.current;
+    if (applied?.id === issueId && (searching || !applied.searching)) {
+      return;
+    }
+    appliedIssue.current = { id: issueId, searching };
+    pagedAwayFrom.current = null;
+    setPage(searching, current =>
       current.queryKey === queryKey && current.offset === targetOffset
         ? current
         : { offset: targetOffset, queryKey },
     );
-  }, [issueId, orderedIds, pageSize, queryKey]);
+  }, [issueId, orderedIds, pageSize, queryKey, searching, setPage]);
+
+  // Paging inside search results does not move the user away from the link.
+  const turnPage = (nextOffset: number) => {
+    if (issueId && !searching) {
+      pagedAwayFrom.current = issueId;
+    }
+    setPage(searching, () => ({ offset: nextOffset, queryKey }));
+  };
 
   const toggleIssue = useCallback(
     (id: string) =>
@@ -332,16 +374,14 @@ export function FindingsTable({ issues }: { issues: MigrationIssue[] }) {
                   totalCount: ordered.length,
                   hasNextPage: offset + pageSize < ordered.length,
                   hasPreviousPage: offset > 0,
-                  onNextPage: () =>
-                    setPage({ offset: offset + pageSize, queryKey }),
+                  onNextPage: () => turnPage(offset + pageSize),
                   onPreviousPage: () =>
-                    setPage({
-                      offset: Math.max(0, offset - pageSize),
-                      queryKey,
-                    }),
+                    turnPage(Math.max(0, offset - pageSize)),
                   onPageSizeChange: size => {
                     setPageSize(size);
-                    setPage({ offset: 0, queryKey });
+                    // Offsets of the other page no longer line up with the new size.
+                    setPage(!searching, current => ({ ...current, offset: 0 }));
+                    turnPage(0);
                   },
                 }
               : { type: 'none' }
