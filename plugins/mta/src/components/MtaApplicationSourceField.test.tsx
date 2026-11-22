@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiHolder } from '@backstage/core-plugin-api';
-import { scmIntegrationsApiRef } from '@backstage/integration-react';
+import {
+  ScmIntegrationsApi,
+  scmIntegrationsApiRef,
+} from '@backstage/integration-react';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
-import { TestApiProvider } from '@backstage/frontend-test-utils';
+import { mockApis, TestApiProvider } from '@backstage/frontend-test-utils';
 import type { FieldExtensionComponentProps } from '@backstage/plugin-scaffolder-react';
 import type { Entity } from '@backstage/catalog-model';
 import {
@@ -16,7 +19,10 @@ import {
   VERIFICATION_ERROR,
   type MtaApplicationValue,
 } from '../onboarding/applicationValue';
-import { REPOSITORY_MISSING_PROBLEM } from '../repository';
+import {
+  REPOSITORY_MISSING_PROBLEM,
+  REPOSITORY_UNRESOLVED_PROBLEM,
+} from '../repository';
 import {
   MtaApplicationSourceField,
   validateMtaApplicationSource,
@@ -29,6 +35,7 @@ import {
  */
 
 type Catalog = (typeof catalogApiRef)['T'];
+type Integrations = (typeof scmIntegrationsApiRef)['T'];
 
 const component = (overrides: Partial<Entity> = {}): Entity => ({
   apiVersion: 'backstage.io/v1alpha1',
@@ -83,17 +90,20 @@ function Harness({
   rawErrors = [],
   onChange,
   disabled,
+  integrations,
 }: {
   catalog: Catalog;
   initialFormData?: MtaApplicationValue;
   rawErrors?: string[];
   onChange?: (next: MtaApplicationValue | undefined) => void;
   disabled?: boolean;
+  /** Omitted to cover a host that registers no SCM integrations API. */
+  integrations?: Integrations;
 }) {
   const [formData, setFormData] = useState<MtaApplicationValue | undefined>(
     initialFormData,
   );
-  return (
+  const field = (
     <TestApiProvider apis={[[catalogApiRef, catalog]]}>
       <MtaApplicationSourceField
         {...fieldProps({
@@ -107,6 +117,14 @@ function Harness({
         })}
       />
     </TestApiProvider>
+  );
+  // The provider falls back to its parent, so the outer one adds the registry.
+  return integrations ? (
+    <TestApiProvider apis={[[scmIntegrationsApiRef, integrations]]}>
+      {field}
+    </TestApiProvider>
+  ) : (
+    field
   );
 }
 
@@ -454,6 +472,87 @@ describe('application source validation', () => {
         apiHolder({ catalog }),
       ),
     ).toEqual([REPOSITORY_MISSING_PROBLEM]);
+  });
+
+  describe('on a host only the integrations configuration identifies', () => {
+    const entityRef = 'component:default/app';
+    const enterprise = component({
+      metadata: {
+        name: 'app',
+        namespace: 'default',
+        title: 'App',
+        annotations: {
+          'backstage.io/source-location':
+            'url:https://ghe.acme.com/acme/app/tree/main/services/api',
+        },
+      },
+    });
+
+    it('shows and hands the form the repository the validator accepts', async () => {
+      const integrations = ScmIntegrationsApi.fromConfig(
+        mockApis.config({
+          data: { integrations: { github: [{ host: 'ghe.acme.com' }] } },
+        }),
+      );
+      const catalog = createCatalog({
+        getEntityByRef: jest.fn().mockResolvedValue(enterprise),
+      });
+      const onChange = jest.fn();
+      render(
+        <Harness
+          catalog={catalog}
+          integrations={integrations}
+          onChange={onChange}
+          initialFormData={{ applicationSource: 'catalog', entityRef }}
+        />,
+      );
+
+      const expected: MtaApplicationValue = {
+        applicationSource: 'catalog',
+        entityRef,
+        owner: 'group:default/team',
+        repository: 'https://ghe.acme.com/acme/app',
+        rootPath: 'services/api',
+      };
+      await waitFor(() => expect(onChange).toHaveBeenCalledWith(expected));
+      const summary = screen.getByRole('region', {
+        name: 'Selected application',
+      });
+      expect(summary).toHaveTextContent('https://ghe.acme.com/acme/app');
+      expect(summary).not.toHaveTextContent('Repository needs review');
+      // Handing the derived value to the form does not repeat the lookup.
+      expect(catalog.getEntityByRef).toHaveBeenCalledTimes(1);
+      expect(
+        await validate(expected, apiHolder({ catalog, integrations })),
+      ).toEqual([]);
+    });
+
+    it('reports the same problem in the field and the validator without the registry', async () => {
+      const catalog = createCatalog({
+        getEntityByRef: jest.fn().mockResolvedValue(enterprise),
+      });
+      render(
+        <Harness
+          catalog={catalog}
+          initialFormData={{ applicationSource: 'catalog', entityRef }}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('region', { name: 'Selected application' }),
+        ).toHaveTextContent('Repository needs review'),
+      );
+      expect(
+        screen.getByRole('region', { name: 'Selected application' }),
+      ).toHaveTextContent(REPOSITORY_UNRESOLVED_PROBLEM);
+      expect(
+        await validate(
+          { applicationSource: 'catalog', entityRef },
+          apiHolder({ catalog }),
+        ),
+      ).toEqual([REPOSITORY_UNRESOLVED_PROBLEM]);
+    });
   });
 
   it('cannot verify a catalog selection when the host provides no catalog', async () => {

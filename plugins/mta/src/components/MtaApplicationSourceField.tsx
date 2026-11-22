@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApi, useApiHolder } from '@backstage/core-plugin-api';
 import { scmIntegrationsApiRef } from '@backstage/integration-react';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import type { Entity } from '@backstage/catalog-model';
@@ -76,6 +76,9 @@ export function MtaApplicationSourceField({
   readonly,
 }: FieldExtensionComponentProps<MtaApplicationValue>) {
   const catalog = useApi(catalogApiRef);
+  // Read the same way the validator reads it: optional, so a host without the
+  // registry falls back to host name rules in both places instead of throwing.
+  const integrations = useApiHolder().get(scmIntegrationsApiRef);
   const [touched, setTouched] = useState(false);
   const [wasInvalid, setWasInvalid] = useState(false);
   const fieldRoot = useRef<HTMLDivElement>(null);
@@ -132,7 +135,7 @@ export function MtaApplicationSourceField({
           setSelection({ status: 'unavailable', entityRef });
           return;
         }
-        const source = resolveRepositorySource(entity);
+        const source = resolveRepositorySource(entity, integrations);
         const next: SelectedApplication = {
           status: 'ready',
           entityRef,
@@ -177,7 +180,7 @@ export function MtaApplicationSourceField({
     return () => {
       active = false;
     };
-  }, [catalog, values.entityRef]);
+  }, [catalog, integrations, values.entityRef]);
 
   useEffect(() => {
     const input = term.trim();
