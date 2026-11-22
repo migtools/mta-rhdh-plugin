@@ -37,6 +37,8 @@ interface ParsedZipEntry {
   crc: number;
   flags: number;
   method: number;
+  time: number;
+  day: number;
 }
 
 /**
@@ -67,6 +69,8 @@ async function parseZip(blob: Blob): Promise<ParsedZipEntry[]> {
     expect(view.getUint32(cursor, true)).toBe(CENTRAL_SIGNATURE);
     const flags = view.getUint16(cursor + 8, true);
     const method = view.getUint16(cursor + 10, true);
+    const time = view.getUint16(cursor + 12, true);
+    const day = view.getUint16(cursor + 14, true);
     const crc = view.getUint32(cursor + 16, true);
     const compressedSize = view.getUint32(cursor + 20, true);
     const size = view.getUint32(cursor + 24, true);
@@ -85,8 +89,18 @@ async function parseZip(blob: Blob): Promise<ParsedZipEntry[]> {
     const data = bytes.subarray(dataStart, dataStart + compressedSize);
     expect(compressedSize).toBe(size);
     expect(crc32(data)).toBe(crc);
+    expect(view.getUint16(localOffset + 10, true)).toBe(time);
+    expect(view.getUint16(localOffset + 12, true)).toBe(day);
 
-    entries.push({ name, content: decoder.decode(data), crc, flags, method });
+    entries.push({
+      name,
+      content: decoder.decode(data),
+      crc,
+      flags,
+      method,
+      time,
+      day,
+    });
     cursor += 46 + nameLength + extraLength + commentLength;
   }
   expect(cursor).toBe(centralOffset + centralSize);
@@ -136,6 +150,56 @@ describe('createZipArchive', () => {
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
       'f1db71e4ea25611c9dc6d5795dd7140c2b4ef5577490dab3040591468b879293',
     );
+  });
+
+  // DOS fields hold local years 1980 to 2107 in two-second steps.
+  const timestamps: Array<[string, Date, Date]> = [
+    [
+      'writes an in-range timestamp unchanged',
+      new Date(2026, 0, 2, 3, 4, 6),
+      new Date(2026, 0, 2, 3, 4, 6),
+    ],
+    [
+      'clamps a timestamp before 1980 to the earliest DOS date',
+      new Date(1975, 5, 15, 12, 30, 0),
+      new Date(1980, 0, 1),
+    ],
+    [
+      'clamps the last second of 1979 to the earliest DOS date',
+      new Date(1979, 11, 31, 23, 59, 59),
+      new Date(1980, 0, 1),
+    ],
+    [
+      'writes the last second of 2107 as the latest DOS date',
+      new Date(2107, 11, 31, 23, 59, 59),
+      new Date(2107, 11, 31, 23, 59, 58),
+    ],
+    [
+      'clamps a timestamp after 2107 to the latest DOS date',
+      new Date(2110, 0, 1),
+      new Date(2107, 11, 31, 23, 59, 58),
+    ],
+    [
+      'writes an invalid date as the earliest DOS date',
+      new Date(Number.NaN),
+      new Date(1980, 0, 1),
+    ],
+  ];
+
+  it.each(timestamps)('%s', async (_description, date, expected) => {
+    const [entry] = await parseZip(
+      createZipArchive([{ path: 'a.txt', content: 'x' }], date),
+    );
+    expect(
+      new Date(
+        (entry.day >> 9) + 1980,
+        ((entry.day >> 5) & 0x0f) - 1,
+        entry.day & 0x1f,
+        entry.time >> 11,
+        (entry.time >> 5) & 0x3f,
+        (entry.time & 0x1f) * 2,
+      ),
+    ).toEqual(expected);
   });
 
   const unsafeNames: Array<[string, string]> = [

@@ -135,7 +135,14 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function dosDateTime(date: Date): { time: number; day: number } {
+function dosDateTime(input: Date): { time: number; day: number } {
+  // DOS fields hold local years 1980 to 2107. Clamp a clock outside that range
+  // (or an invalid date) so the fields cannot wrap into an unrelated date.
+  const earliest = new Date(1980, 0, 1);
+  const latest = new Date(2107, 11, 31, 23, 59, 58);
+  let date = input;
+  if (Number.isNaN(input.getTime()) || input < earliest) date = earliest;
+  else if (input > latest) date = latest;
   return {
     time:
       (date.getHours() << 11) |
