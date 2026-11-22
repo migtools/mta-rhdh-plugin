@@ -71,4 +71,39 @@ describe('failed task support contact', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
+
+  const malformedEmails = [
+    'migration-team@example.test?subject=Hello',
+    'migration-team@example.test#fragment',
+    'migration-team@example.test,external.test',
+  ];
+
+  it.each(malformedEmails)(
+    'names the contact without a link when the email is %s',
+    email => {
+      renderFailed({ name: 'Migration Team', email });
+      expect(
+        screen.getByText('If the problem continues, contact Migration Team.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(malformedEmails)(
+    'renders no contact sentence when the only value is %s',
+    email => {
+      renderFailed({ email });
+      expect(
+        screen.queryByText(/If the problem continues/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    },
+  );
+
+  it('keeps a plus address literal in the link', () => {
+    renderFailed({ email: 'team+mta@example.test' });
+    expect(
+      screen.getByRole('link', { name: 'team+mta@example.test' }),
+    ).toHaveAttribute('href', 'mailto:team+mta@example.test');
+  });
 });

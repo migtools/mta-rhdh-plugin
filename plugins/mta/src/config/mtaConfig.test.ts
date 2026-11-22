@@ -62,10 +62,60 @@ describe('readMtaConfig', () => {
       'migration-team@',
       '@example.test',
       'migration team@example.test',
+      // URI query, fragment and path syntax.
+      'migration-team@example.test?subject=Hello',
+      'migration-team@example.test#fragment',
+      'migration-team?cc=other@example.test',
+      'migration%2Dteam@example.test',
+      'migration-team@example.test/path',
+      // Characters RFC 6068 would require to be percent-encoded.
+      'ops&dev@example.test',
+      'a=b@example.test',
+      '{x}@example.test',
+      'a|b@example.test',
+      'a`b@example.test',
+      'a^b@example.test',
+      // More than one recipient.
+      'migration-team@example.test,external.test',
+      'migration-team@example.test;other@example.test',
+      'migration-team@other@example.test',
+      // Control characters inside the value.
+      'migration-team\u0000@example.test',
+      'migration-team@example\n.test',
+      // Malformed local part or domain.
+      '.migration-team@example.test',
+      'migration..team@example.test',
+      'migration-team@.example.test',
+      'migration-team@example.test.',
+      'migration-team@example..test',
+      'migration-team@-example.test',
+      'migration-team@example_host.test',
+      'migration-team@localhost',
     ]) {
       expect(
         readMtaConfig(reader({ 'mta.support.email': value })).supportEmail,
       ).toBeUndefined();
+    }
+  });
+
+  it('treats a support email with a mailto: prefix as missing', () => {
+    expect(
+      readMtaConfig(
+        reader({ 'mta.support.email': 'mailto:migration-team@example.test' }),
+      ).supportEmail,
+    ).toBeUndefined();
+  });
+
+  it('accepts a single plain support email', () => {
+    for (const value of [
+      'migration-team@example.test',
+      'Migration.Team+mta@mail.example.test',
+      "o'brien@example.test",
+      'team@eu-west-1.mail.example.test',
+    ]) {
+      expect(
+        readMtaConfig(reader({ 'mta.support.email': value })).supportEmail,
+      ).toBe(value);
     }
   });
 

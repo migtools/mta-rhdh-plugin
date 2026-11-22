@@ -39,5 +39,5 @@ mta:
 | Key                 | Type             | Effect                                                                                                                                                           |
 | ------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mta.support.name`  | string, optional | Adds the sentence "If the problem continues, contact Migration Team." below the failed task actions. With an email, the name is a `mailto:` link to it.          |
-| `mta.support.email` | string, optional | Target of that `mailto:` link. On its own, the address becomes the link text. An invalid address counts as not configured.                                       |
+| `mta.support.email` | string, optional | Target of that `mailto:` link. On its own, the address becomes the link text. Anything but one address with a dotted ASCII domain counts as not configured.      |
 | `mta.devSpaces.url` | string, optional | Adds "Open in Dev Spaces" beside the findings actions for every persona, opening a new tab. Only an `http` or `https` URL is accepted; anything else is ignored. |

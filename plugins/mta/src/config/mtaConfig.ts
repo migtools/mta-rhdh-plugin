@@ -40,14 +40,22 @@ function readString(reader: MtaConfigReader, key: string): string | undefined {
   }
 }
 
+// The RFC 5322 dot-atom characters that RFC 6068 allows literally in a
+// `mailto:` recipient, so the address needs no encoding in the link.
+const LOCAL_ATOM = "[A-Za-z0-9!$'*+_~-]+";
+// One DNS label: letters, digits and inner hyphens, at most 63 characters.
+const DOMAIN_LABEL = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?';
+const EMAIL_PATTERN = new RegExp(
+  `^${LOCAL_ATOM}(?:\\.${LOCAL_ATOM})*@${DOMAIN_LABEL}(?:\\.${DOMAIN_LABEL})+$`,
+);
+
 /**
- * A support address needs one local part and one domain around a single `@`.
- * Otherwise it is not an address, so it counts as not configured and never
- * becomes a `mailto:` target.
+ * A support address must be one plain address with a dotted ASCII host name.
+ * Anything else counts as not configured and never becomes a `mailto:` target.
  */
 function safeEmail(email: string | undefined): string | undefined {
   if (!email) return undefined;
-  return /^[^\s@]+@[^\s@]+$/.test(email) ? email : undefined;
+  return EMAIL_PATTERN.test(email) ? email : undefined;
 }
 
 /**
